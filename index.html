@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Clock</title>
+<style>
+  :root {
+    --bg: #1f1f1f;
+    --fg: #ffffff;
+    --muted: #9a9a9a;
+    --accent: #ff3b30;
+    --hand: #ffffff;
+    --face: #1f1f1f;
+    --face-stroke: rgba(255,255,255,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                 "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(28px, 9vw, 90px);
+    background: var(--bg);
+    border-radius: 28px;
+    padding: 22px 26px;
+    width: 100%;
+    max-width: 520px;
+    margin: 12px auto;
+    min-height: 150px;
+  }
+
+  .left { min-width: 0; flex: 0 1 auto; }
+
+  .time {
+    font-size: clamp(40px, 9vw, 64px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin: 0 0 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .location {
+    font-size: clamp(14px, 2.6vw, 17px);
+    color: var(--muted);
+    line-height: 1.25;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .right { flex: 0 0 auto; }
+
+  .clock {
+    width: clamp(110px, 24vw, 140px);
+    height: clamp(110px, 24vw, 140px);
+    display: block;
+  }
+
+  .num {
+    fill: var(--fg);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+  }
+
+  .hand {
+    stroke: var(--hand);
+    stroke-linecap: round;
+    transform-origin: 50px 50px;
+    transition: transform 0.05s linear;
+  }
+  .hour   { stroke-width: 4.5; }
+  .minute { stroke-width: 3.5; }
+  .second {
+    stroke: var(--accent);
+    stroke-width: 1.6;
+    transform-origin: 50px 50px;
+  }
+  .pin {
+    fill: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <div class="card" role="group" aria-label="Clock">
+    <div class="left">
+      <p class="time" id="time">--:--</p>
+      <p class="location" id="location">Locating…</p>
+    </div>
+    <div class="right">
+      <svg class="clock" viewBox="0 0 100 100" aria-hidden="true">
+        <!-- numerals 1..12 placed around the face -->
+        <g id="numerals"></g>
+        <!-- hands -->
+        <line class="hand hour"   id="hour"   x1="50" y1="50" x2="50" y2="30" />
+        <line class="hand minute" id="minute" x1="50" y1="50" x2="50" y2="22" />
+        <line class="hand second" id="second" x1="50" y1="56" x2="50" y2="18" />
+        <circle class="pin" cx="50" cy="50" r="1.6" />
+      </svg>
+    </div>
+  </div>
+
+<script>
+(function () {
+  // ---------- Numerals around the analog face ----------
+  // 12 at top, then 1..11 clockwise. Radius pulls them just inside the edge.
+  const numerals = document.getElementById('numerals');
+  const R = 41;
+  for (let i = 1; i <= 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 - Math.PI / 2; // -90deg so 12 is top
+    const x = 50 + R * Math.cos(angle);
+    const y = 50 + R * Math.sin(angle);
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('class', 'num');
+    t.setAttribute('x', x.toFixed(2));
+    t.setAttribute('y', y.toFixed(2));
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'central');
+    t.textContent = i;
+    numerals.appendChild(t);
+  }
+
+  // ---------- Time (auto timezone via the browser) ----------
+  const timeEl   = document.getElementById('time');
+  const hourEl   = document.getElementById('hour');
+  const minuteEl = document.getElementById('minute');
+  const secondEl = document.getElementById('second');
+
+  function tick() {
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const s = now.getSeconds();
+
+    // 24-hour digital readout, e.g. 21:42
+    timeEl.textContent =
+      String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+
+    // Analog hand angles (degrees)
+    const secondDeg = s * 6;
+    const minuteDeg = m * 6 + s * 0.1;
+    const hourDeg   = (h % 12) * 30 + m * 0.5;
+
+    hourEl.style.transform   = `rotate(${hourDeg}deg)`;
+    minuteEl.style.transform = `rotate(${minuteDeg}deg)`;
+    secondEl.style.transform = `rotate(${secondDeg}deg)`;
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // ---------- Location (auto-detect via IP) ----------
+  const locEl = document.getElementById('location');
+
+  async function fetchLocation() {
+    // ipapi.co is free for low-volume use, no key required.
+    // If it fails, we fall back to ipwho.is.
+    try {
+      const r = await fetch('https://ipapi.co/json/');
+      if (!r.ok) throw new Error('ipapi failed');
+      const j = await r.json();
+      const parts = [j.city, j.region, j.country_name].filter(Boolean);
+      if (parts.length) { locEl.textContent = parts.join(', '); return; }
+      throw new Error('ipapi empty');
+    } catch (_) {
+      try {
+        const r2 = await fetch('https://ipwho.is/');
+        const j2 = await r2.json();
+        const parts = [j2.city, j2.region, j2.country].filter(Boolean);
+        locEl.textContent = parts.length ? parts.join(', ') : 'Unknown location';
+      } catch (e) {
+        locEl.textContent = 'Unknown location';
+      }
+    }
+  }
+  fetchLocation();
+})();
+</script>
+</body>
+</html>
